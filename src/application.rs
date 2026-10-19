@@ -54,6 +54,15 @@ pub enum HeartbeatExtendMode {
     ListEnd,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum PlayModeAction {
+    ToggleShuffle,
+    ToggleRepeat,
+    ToggleLike,
+    CycleMode,
+    ToggleMute,
+}
+
 // 获取「我喜欢的音乐」歌单 ID（uid 级缓存），失败时返回错误 toast 文案
 async fn favorite_playlist_id(ncmapi: &NcmClient, uid: u64) -> Result<u64, &'static str> {
     {
@@ -112,6 +121,7 @@ pub enum Action {
     Play(SongInfo),
     PlayStart(SongInfo),
     TogglePlayPause,
+    PlayMode(PlayModeAction),
     // (歌单, 是否立即播放)
     AddPlayList(Vec<SongInfo>, bool),
     PlayListStart,
@@ -243,6 +253,20 @@ mod imp {
     }
 
     impl ApplicationImpl for NeteaseCloudMusicGtk4Application {
+        fn startup(&self) {
+            self.parent_startup();
+            // 启动时加载全局应用样式（自动跟随系统明暗主题与强调色）
+            let provider = gtk::CssProvider::new();
+            provider.load_from_resource(
+                "/com/gitee/gmg137/NeteaseCloudMusicGtk4/themes/app.css",
+            );
+            gtk::style_context_add_provider_for_display(
+                &gtk::gdk::Display::default().expect("Could not connect to a display."),
+                &provider,
+                gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+            );
+        }
+
         // We connect to the activate callback to create a window when the application
         // has been launched. Additionally, this callback notifies us when the user
         // tries to launch a "second instance" of the application. When they try
@@ -616,7 +640,7 @@ impl NeteaseCloudMusicGtk4Application {
             }
             Action::ToTopPicksPage => {
                 let page = window.init_picks_songlist();
-                window.page_new(&page, gettext("all top picks").as_str(), "ToTopPicksPage");
+                window.page_new(page.clone(), gettext("all top picks").as_str(), "ToTopPicksPage");
                 let page = page.downgrade();
 
                 MAINCONTEXT.spawn_local_with_priority(Priority::DEFAULT_IDLE, async move {
@@ -669,7 +693,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToAllAlbumsPage => {
                 let page = window.init_all_albums();
 
-                window.page_new(&page, gettext("all new albums").as_str(), "ToAllAlbumsPage");
+                window.page_new(page.clone(), gettext("all new albums").as_str(), "ToAllAlbumsPage");
                 let page = page.downgrade();
 
                 MAINCONTEXT.spawn_local_with_priority(Priority::DEFAULT_IDLE, async move {
@@ -719,7 +743,7 @@ impl NeteaseCloudMusicGtk4Application {
                                         },
                                         true,
                                     );
-                                    window.page_new(&page, &album.name, "Album");
+                                    window.page_new(page.clone(), &album.name, "Album");
                                     let page = page.downgrade();
                                     let detal_dynamic_as =
                                         ncmapi.client.album_detail_dynamic(album.id);
@@ -841,7 +865,7 @@ impl NeteaseCloudMusicGtk4Application {
             }
             Action::ToSongListPage(songlist) => {
                 let page = window.init_songlist_page(&songlist, false);
-                window.page_new(&page, &songlist.name, "ToSongListPage");
+                window.page_new(page.clone(), &songlist.name, "ToSongListPage");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -917,7 +941,7 @@ impl NeteaseCloudMusicGtk4Application {
             }
             Action::ToAlbumPage(songlist) => {
                 let page = window.init_songlist_page(&songlist, true);
-                window.page_new(&page, &songlist.name, "ToAlbumPage");
+                window.page_new(page.clone(), &songlist.name, "ToAlbumPage");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -950,7 +974,7 @@ impl NeteaseCloudMusicGtk4Application {
             }
             Action::ToRadioPage(songlist) => {
                 let page = window.init_songlist_page(&songlist, true);
-                window.page_new(&page, &songlist.name, "ToRadioPage");
+                window.page_new(page.clone(), &songlist.name, "ToRadioPage");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -984,6 +1008,36 @@ impl NeteaseCloudMusicGtk4Application {
             }
             Action::TogglePlayPause => {
                 window.toggle_play_pause();
+            }
+            Action::PlayMode(play_mode_action) => {
+                let player_controls = window.imp().player_controls.get();
+                match play_mode_action {
+                    PlayModeAction::ToggleShuffle => {
+                        player_controls.toggle_shuffle();
+                    }
+                    PlayModeAction::ToggleRepeat => {
+                        player_controls.toggle_repeat();
+                    }
+                    PlayModeAction::ToggleLike => {
+                        if let Some(song) = player_controls.get_current_song() {
+                            player_controls.toggle_like(song.id);
+                        }
+                    }
+                    PlayModeAction::CycleMode => {
+                        player_controls.cycle_play_mode();
+                    }
+                    PlayModeAction::ToggleMute => {
+                        let current_vol = player_controls.property::<f64>("volume");
+                        if current_vol > 0.0 {
+                            player_controls.set_volume(0.0);
+                        } else {
+                            // 恢复到之前的音量或默认 0.5
+                            let settings = player_controls.imp().settings.get().unwrap();
+                            let saved_vol = settings.double("volume");
+                            player_controls.set_volume(saved_vol.max(0.1));
+                        }
+                    }
+                }
             }
             Action::LikeSongList(id, is_like, callback) => {
                 let sender = imp.sender.clone();
@@ -1237,7 +1291,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToSingerSongsPage(singer) => {
                 let title = &singer.name;
                 let page = window.init_search_song_page(title, SearchType::SingerSongs);
-                window.page_new(&page, title, "ToSingerSongsPage");
+                window.page_new(page.clone(), title, "ToSingerSongsPage");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -1264,7 +1318,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageDailyRec => {
                 let title = gettext("Daily Recommendation");
                 let page = window.init_search_song_page(&title, SearchType::DailyRec);
-                window.page_new(&page, &title, "ToMyPageDailyRec");
+                window.page_new(page.clone(), &title, "ToMyPageDailyRec");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -1294,7 +1348,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageHeartbeat => {
                 let title = gettext("Favorite Songs");
                 let page = window.init_search_song_page(&title, SearchType::Heartbeat);
-                window.page_new(&page, &title, "ToMyPageHeartbeat");
+                window.page_new(page.clone(), &title, "ToMyPageHeartbeat");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -1343,7 +1397,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageCloudDisk => {
                 let title = gettext("Cloud Music");
                 let page = window.init_search_song_page(&title, SearchType::CloudDisk);
-                window.page_new(&page, &title, "ToMyPageCloudDisk");
+                window.page_new(page.clone(), &title, "ToMyPageCloudDisk");
                 let page = page.downgrade();
 
                 let sender = imp.sender.clone();
@@ -1373,7 +1427,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageRadio => {
                 let title = gettext("My Radio");
                 let page = window.init_search_songlist_page(&title, SearchType::Radio);
-                window.page_new(&page, &title, "ToMyPageRadio");
+                window.page_new(page.clone(), &title, "ToMyPageRadio");
                 let page = page.downgrade();
 
                 MAINCONTEXT.spawn_local_with_priority(Priority::DEFAULT_IDLE, async move {
@@ -1390,7 +1444,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageAlbums => {
                 let title = gettext("Favorite Album");
                 let page = window.init_search_songlist_page(&title, SearchType::LikeAlbums);
-                window.page_new(&page, &title, "ToMyPageAlbums");
+                window.page_new(page.clone(), &title, "ToMyPageAlbums");
                 let page = page.downgrade();
 
                 MAINCONTEXT.spawn_local_with_priority(Priority::DEFAULT_IDLE, async move {
@@ -1407,7 +1461,7 @@ impl NeteaseCloudMusicGtk4Application {
             Action::ToMyPageSonglist => {
                 let title = gettext("Favorite Song List");
                 let page = window.init_search_songlist_page(&title, SearchType::LikeSongList);
-                window.page_new(&page, &title, "ToMyPageSonglist");
+                window.page_new(page.clone(), &title, "ToMyPageSonglist");
                 let page = page.downgrade();
 
                 MAINCONTEXT.spawn_local_with_priority(Priority::DEFAULT_IDLE, async move {

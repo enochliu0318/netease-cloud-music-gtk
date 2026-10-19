@@ -1,0 +1,248 @@
+/*
+ * app.css
+ * 全局应用样式。
+ * 说明：所有随主题变化的颜色一律使用 Libadwaita 命名颜色，
+ *      以便自动跟随系统浅色/深色模式；
+ *      强调色使用 dwm 系统主色 daisy gold（见下方 @define-color）。
+ */
+
+/* dwm 配置主色（~/.config dwm config.h: col_selbg） */
+@define-color ncm_gold #d9a441;
+@define-color ncm_gold_fg #1c1812;
+
+/* ---- 应用虚化背景 ---- */
+
+/* 内容之上的主题色遮罩：让虚化背景若隐若现且保证文字可读 */
+.bg-scrim {
+  background-color: alpha(@theme_bg_color, 0.78);
+}
+
+/* ---- 强调色覆盖：金色（覆盖 libadwaita 默认蓝色 accent） ---- */
+
+/* 主操作按钮（播放按钮等） */
+.suggested-action {
+  background-color: @ncm_gold;
+  color: @ncm_gold_fg;
+}
+
+.suggested-action:hover {
+  background-color: mix(@ncm_gold, #ffffff, 0.18);
+}
+
+.suggested-action:active {
+  background-color: mix(@ncm_gold, #000000, 0.18);
+}
+
+/* 复选框/单选框选中态 */
+check:checked,
+radio:checked {
+  background-color: @ncm_gold;
+  color: @ncm_gold_fg;
+}
+
+/* 开关选中态 */
+switch:checked {
+  background-color: @ncm_gold;
+  color: @ncm_gold_fg;
+}
+
+/* 所有进度条/滑块的已播放段与滑块（含音量条） */
+scale highlight {
+  background-color: @ncm_gold;
+}
+
+scale slider {
+  background-color: @ncm_gold;
+}
+
+/* 文本选区 */
+selection {
+  background-color: @ncm_gold;
+  color: @ncm_gold_fg;
+}
+
+/* 焦点环 */
+*:focus-visible {
+  outline-color: @ncm_gold;
+}
+
+/* 搜索框聚焦光晕 */
+entry:focus {
+  box-shadow: 0 0 0 2px alpha(@ncm_gold, 0.45);
+}
+
+/* 头像组件（每日推荐/心动模式/电台/云盘入口） */
+avatar {
+  background-color: @ncm_gold;
+  color: @ncm_gold_fg;
+}
+
+/* 加载动画 */
+spinner highlight {
+  background-color: @ncm_gold;
+}
+
+/* ---- 播放栏 ---- */
+
+/* 圆角专辑封面：border-radius 提供圆角，配合控件 overflow=hidden
+ * （见 player-controls.ui 中 player-cover 的 overflow 属性）裁剪图片 */
+.player-cover {
+  border-radius: 8px;
+  margin: 4px;
+}
+
+/* 进度条：细圆角轨道 + 强调色已播放部分 */
+.seek-scale trough {
+  min-height: 4px;
+  border-radius: 4px;
+  border: none;
+  background-color: alpha(@theme_fg_color, 0.15);
+}
+
+.seek-scale highlight {
+  min-height: 4px;
+  border-radius: 4px;
+  background-color: @ncm_gold;
+}
+
+/* 悬停/拖动时显示的小圆点滑块 */
+.seek-scale slider {
+  min-width: 12px;
+  min-height: 12px;
+  margin: -4px;
+  border: none;
+  border-radius: 100%;
+  background-color: @ncm_gold;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.seek-scale:hover slider,
+.seek-scale:active slider,
+.seek-scale:focus-within slider {
+  opacity: 1;
+}
+
+/* ---- 单独播放页（Now Playing Page）---- */
+
+/* 页面标题 */
+.now-playing-title {
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+/* 专辑封面背景（模糊延伸，参照 AerMusic） */
+.cover-blur-bg {
+  border-radius: 40px;
+  margin: 8px;
+  min-width: 400px;
+  min-height: 400px;
+  max-width: 560px;
+  max-height: 560px;
+}
+
+/* 专辑封面主图 */
+.cover-image {
+  border-radius: 24px;
+  margin: 16px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  border: 1px solid alpha(white, 0.1);
+}
+
+/* 歌曲标题 */
+.song-title {
+  font-size: 1.5em;
+  font-weight: 700;
+}
+
+/* 艺术家名 */
+.song-artist {
+  font-size: 1.1em;
+}
+
+/* 专辑名 */
+.song-album {
+  font-size: 0.95em;
+  opacity: 0.8;
+}
+
+/* Now Playing 页面歌词 */
+.now-playing-lyrics {
+  font-size: 1.1em;
+  line-height: 1.8;
+}
+
+.now-playing-lyrics text {
+  transition: color 0.3s ease, font-weight 0.3s ease;
+}
+
+.now-playing-lyrics text.uttered {
+  color: alpha(@theme_fg_color, 0.5);
+}
+
+.now-playing-lyrics text.highlight {
+  color: @ncm_gold;
+  font-weight: 700;
+}
+
+.now-playing-lyrics text {
+  color: @theme_fg_color;
+}
+
+/* 播放控制按钮 */
+.control-button {
+  color: @theme_fg_color;
+}
+
+.control-button:hover {
+  color: @ncm_gold;
+}
+
+/* 播放/暂停按钮 */
+.play-pause-button {
+  min-width: 56px;
+  min-height: 56px;
+}
+
+/* 点赞状态 */
+.playing-like {
+  color: @ncm_gold;
+}
+
+/* 时间标签 */
+.time-label {
+  font-size: 0.85em;
+  opacity: 0.7;
+}
+
+/* 音量滑块 */
+.volume-scale trough {
+  min-height: 4px;
+  border-radius: 4px;
+  background-color: alpha(@theme_fg_color, 0.15);
+}
+
+.volume-scale highlight {
+  min-height: 4px;
+  border-radius: 4px;
+  background-color: @ncm_gold;
+}
+
+.volume-scale slider {
+  min-width: 12px;
+  min-height: 12px;
+  margin: -4px;
+  border: none;
+  border-radius: 100%;
+  background-color: @ncm_gold;
+  box-shadow: none;
+  opacity: 0;
+  transition: opacity 150ms ease-out;
+}
+
+.volume-scale:hover slider,
+.volume-scale:active slider,
+.volume-scale:focus-within slider {
+  opacity: 1;
+}

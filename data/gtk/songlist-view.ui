@@ -20,6 +20,9 @@
                                 <child>
                                     <object class="GtkListBox" id="listbox">
                                         <property name="valign">start</property>
+                                        <property name="selection-mode">single</property>
+                                        <!-- Windows 风格：单击选中、双击（或回车）播放 -->
+                                        <property name="activate-on-single-click">False</property>
                                         <style>
                                             <class name="boxed-list" />
                                         </style>

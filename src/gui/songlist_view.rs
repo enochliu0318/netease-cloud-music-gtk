@@ -77,11 +77,11 @@ impl SongListView {
                 #[weak(rename_to = s)]
                 self,
                 move |row| {
-                    if row.is_activatable() || row.not_ignore_grey() {
-                        row.switch_image(true);
-                        sender.send_blocking(Action::AddPlay(si.clone())).unwrap();
-                        s.emit_row_activated(row);
-                    }
+                    // 始终允许点击尝试播放，即使是版权受限/灰色歌曲。
+                    // 应用层在获取播放链接失败时会给出 toast 提示。
+                    row.switch_image(true);
+                    sender.send_blocking(Action::AddPlay(si.clone())).unwrap();
+                    s.emit_row_activated(row);
                 }
             ));
 

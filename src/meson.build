@@ -35,6 +35,7 @@ rust_sources = files(
   'gui/mod.rs',
   'gui/discover.rs',
   'gui/my_page.rs',
+  'gui/now_playing_page.rs',
   'gui/player_controls.rs',
   'gui/playlist_lyrics.rs',
   'gui/preferences.rs',

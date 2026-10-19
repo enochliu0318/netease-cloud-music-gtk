@@ -3,7 +3,6 @@
     <requires lib="gtk" version="4.0" />
     <template class="SonglistRow" parent="GtkListBoxRow">
         <property name="focusable">False</property>
-        <property name="selectable">False</property>
         <property name="height-request">59</property>
         <style>
             <class name="song_row" />
@@ -130,11 +129,6 @@
                         </child>
                     </object>
                 </child>
-            </object>
-        </child>
-        <child>
-            <object class="GtkGestureClick">
-                <signal name="released" handler="on_click" swapped="yes" />
             </object>
         </child>
     </template>

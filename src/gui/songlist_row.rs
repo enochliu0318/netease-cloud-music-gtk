@@ -6,7 +6,7 @@
 use crate::{application::Action, utils::setup_ellipsis_tooltip};
 use async_channel::Sender;
 use gettextrs::gettext;
-use glib::{ParamSpec, ParamSpecBoolean, SendWeakRef, Value};
+use glib::{clone, ParamSpec, ParamSpecBoolean, SendWeakRef, Value};
 use gtk::{CompositeTemplate, glib, prelude::*, subclass::prelude::*, *};
 use ncm_api::{SongInfo, SongList};
 use once_cell::sync::{Lazy, OnceCell};
@@ -26,10 +26,27 @@ impl SonglistRow {
         let obj: Self = glib::Object::new();
         let imp = obj.imp();
         if imp.sender.get().is_none() {
-            imp.sender.set(sender).unwrap();
+            imp.sender.set(sender.clone()).unwrap();
         }
         obj.set_from_song_info(si);
         obj.setup_tooltips();
+
+        // 添加单击手势处理播放（不依赖 activate 信号，单击即可触发）
+        let gesture = gtk::GestureClick::new();
+        gesture.set_button(0); // 响应所有鼠标按键
+        gesture.connect_pressed(clone!(
+            #[weak]
+            obj,
+            move |_, _, _, _| {
+                if let Some(sender) = obj.imp().sender.get() {
+                    if let Some(si) = obj.imp().song_info.borrow().as_ref() {
+                        let _ = sender.send_blocking(Action::AddPlay(si.clone()));
+                    }
+                }
+            }
+        ));
+        obj.add_controller(gesture);
+
         obj
     }
 
@@ -41,7 +58,9 @@ impl SonglistRow {
         self.set_album(&si.album);
         self.set_duration(si.duration);
 
-        self.set_activatable(si.copyright.playable());
+        // 始终允许点击尝试播放，即使是版权受限/灰色歌曲。
+        // 应用层在获取播放链接失败时会给出 toast 提示。
+        self.set_activatable(true);
     }
 
     pub fn not_ignore_grey(&self) -> bool {
@@ -107,11 +126,6 @@ impl SonglistRow {
 
 #[gtk::template_callbacks]
 impl SonglistRow {
-    #[template_callback]
-    fn on_click(&self) {
-        self.emit_activate();
-    }
-
     #[template_callback]
     fn like_button_clicked_cb(&self) {
         let imp = self.imp();

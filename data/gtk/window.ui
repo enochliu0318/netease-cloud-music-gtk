@@ -1,14 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <interface>
     <requires lib="gtk" version="4.0" />
-    <template class="NeteaseCloudMusicGtk4Window" parent="GtkApplicationWindow">
+    <requires lib="libadwaita" version="1.4" />
+    <template class="NeteaseCloudMusicGtk4Window" parent="AdwApplicationWindow">
         <property name="default-width">1160</property>
         <property name="default-height">820</property>
         <property name="width-request">750</property>
         <property name="height-request">410</property>
-        <child type="titlebar">
-            <object class="AdwHeaderBar" id="header_bar">
-                <property name="centering-policy">strict</property>
+        <property name="content">
+            <object class="AdwToolbarView" id="toolbar_view">
+                <child type="top">
+                    <object class="AdwHeaderBar" id="header_bar">
+                        <property name="centering-policy">strict</property>
                 <child type="start">
                     <object class="GtkButton" id="back_button">
                         <property name="visible">false</property>
@@ -41,12 +44,13 @@
                             <object class="AdwViewSwitcher" id="switcher_title">
                                 <property name="policy">wide</property>
                                 <property name="stack">stack</property>
+                                <property name="visible">False</property>
                             </object>
                         </child>
                         <child>
                             <object class="GtkLabel" id="label_title">
-                                <property name="visible">false</property>
-                                <property name="label">Hello World!</property>
+                                <property name="visible">True</property>
+                                <property name="label" translatable="yes">Discover</property>
                                 <property name="single-line-mode">True</property>
                                 <property name="ellipsize">end</property>
                                 <property name="width-chars">5</property>
@@ -59,13 +63,130 @@
                 </child>
             </object>
         </child>
-        <child>
-            <object class="GtkBox">
-                <property name="orientation">vertical</property>
-                <child>
-                    <object class="AdwToastOverlay" id="toast_overlay">
-                        <property name="child">
-                            <object class="GtkBox" id="gbox">
+                <property name="content">
+                    <object class="GtkOverlay" id="bg_overlay">
+                        <!-- 底层：虚化壁纸（flower.jpg blur） -->
+                        <child>
+                            <object class="GtkPicture" id="bg_picture">
+                                <property name="file">resource:///com/gitee/gmg137/NeteaseCloudMusicGtk4/bg/flower-blur.jpg</property>
+                                <property name="content-fit">cover</property>
+                                <property name="can-shrink">True</property>
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                                <property name="can-target">False</property>
+                            </object>
+                        </child>
+                        <!-- 中层：主题色遮罩，保证内容可读 -->
+                        <child type="overlay">
+                            <object class="GtkBox">
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                                <property name="can-target">False</property>
+                                <style>
+                                    <class name="bg-scrim" />
+                                </style>
+                            </object>
+                        </child>
+                        <!-- 顶层：Windows 网易云风格左侧导航 + 内容 -->
+                        <child type="overlay">
+                            <object class="AdwNavigationSplitView" id="nav_split">
+                                <property name="sidebar">
+                                    <object class="AdwNavigationPage">
+                                        <property name="title">Navigator</property>
+                                        <property name="child">
+                                            <object class="GtkScrolledWindow">
+                                                <property name="hscrollbar-policy">never</property>
+                                                <child>
+                                                    <object class="GtkListBox" id="nav_sidebar">
+                                                        <property name="selection-mode">single</property>
+                                                        <property name="valign">start</property>
+                                                        <property name="activate-on-single-click">True</property>
+                                                        <signal name="row-activated" handler="nav_sidebar_cb" swapped="true" />
+                                                        <style>
+                                                            <class name="navigation-sidebar" />
+                                                        </style>
+                                                        <child>
+                                                            <object class="GtkListBoxRow">
+                                                                <property name="activatable">True</property>
+                                                                <child>
+                                                                    <object class="GtkBox">
+                                                                        <property name="spacing">12</property>
+                                                                        <property name="margin-start">6</property>
+                                                                        <child>
+                                                                            <object class="GtkImage">
+                                                                                <property name="icon-name">logo-symbolic</property>
+                                                                                <property name="pixel-size">16</property>
+                                                                            </object>
+                                                                        </child>
+                                                                        <child>
+                                                                            <object class="GtkLabel">
+                                                                                <property name="label" translatable="yes">Discover</property>
+                                                                                <property name="xalign">0</property>
+                                                                            </object>
+                                                                        </child>
+                                                                    </object>
+                                                                </child>
+                                                            </object>
+                                                        </child>
+                                                        <child>
+                                                            <object class="GtkListBoxRow">
+                                                                <property name="activatable">True</property>
+                                                                <child>
+                                                                    <object class="GtkBox">
+                                                                        <property name="spacing">12</property>
+                                                                        <property name="margin-start">6</property>
+                                                                        <child>
+                                                                            <object class="GtkImage">
+                                                                                <property name="icon-name">view-sort-ascending-symbolic</property>
+                                                                                <property name="pixel-size">16</property>
+                                                                            </object>
+                                                                        </child>
+                                                                        <child>
+                                                                            <object class="GtkLabel">
+                                                                                <property name="label" translatable="yes">Toplist</property>
+                                                                                <property name="xalign">0</property>
+                                                                            </object>
+                                                                        </child>
+                                                                    </object>
+                                                                </child>
+                                                            </object>
+                                                        </child>
+                                                        <child>
+                                                            <object class="GtkListBoxRow">
+                                                                <property name="activatable">True</property>
+                                                                <child>
+                                                                    <object class="GtkBox">
+                                                                        <property name="spacing">12</property>
+                                                                        <property name="margin-start">6</property>
+                                                                        <child>
+                                                                            <object class="GtkImage">
+                                                                                <property name="icon-name">folder-music-symbolic</property>
+                                                                                <property name="pixel-size">16</property>
+                                                                            </object>
+                                                                        </child>
+                                                                        <child>
+                                                                            <object class="GtkLabel">
+                                                                                <property name="label" translatable="yes">My</property>
+                                                                                <property name="xalign">0</property>
+                                                                            </object>
+                                                                        </child>
+                                                                    </object>
+                                                                </child>
+                                                            </object>
+                                                        </child>
+                                                    </object>
+                                                </child>
+                                            </object>
+                                        </property>
+                                    </object>
+                                </property>
+                                <property name="content">
+                                    <object class="AdwNavigationPage">
+                                        <property name="title" translatable="yes">Discover</property>
+                                        <property name="child">
+                                            <object class="AdwToastOverlay" id="toast_overlay">
+                                                <property name="child">
+                                                    <object class="GtkBox" id="gbox">
                                 <property name="orientation">vertical</property>
                                 <child>
                                     <object class="GtkSearchBar" id="search_bar">
@@ -219,32 +340,43 @@
                                         </child>
                                     </object>
                                 </child>
-                                <child>
-                                    <object class="AdwViewSwitcherBar">
-                                        <property name="stack">stack</property>
-                                    </object>
-                                </child>
                             </object>
                         </property>
                     </object>
+                        </property>
+                        </object>
+                        </property>
+                    </object>
                 </child>
-                <child>
-                    <object class="GtkRevealer" id="player_revealer">
-                        <property name="height-request">60</property>
-                        <property name="visible">false</property>
-                        <property name="transition-duration">888</property>
-                        <property name="transition-type">swing-up</property>
+                    </object>
+                </property>
+                <child type="bottom">
+                    <object class="GtkBox">
+                        <property name="orientation">vertical</property>
                         <child>
-                            <object class="GtkActionBar">
+                            <object class="AdwViewSwitcherBar">
+                                <property name="stack">stack</property>
+                            </object>
+                        </child>
+                        <child>
+                            <object class="GtkRevealer" id="player_revealer">
+                                <property name="height-request">60</property>
+                                <property name="visible">false</property>
+                                <property name="transition-duration">888</property>
+                                <property name="transition-type">swing-up</property>
                                 <child>
-                                    <object class="PlayerControls" id="player_controls" />
+                                    <object class="GtkActionBar">
+                                        <child>
+                                            <object class="PlayerControls" id="player_controls" />
+                                        </child>
+                                    </object>
                                 </child>
                             </object>
                         </child>
                     </object>
                 </child>
             </object>
-        </child>
+        </property>
     </template>
 
     <menu id="primary_menu">

@@ -60,10 +60,11 @@ impl PageStack {
         let page = page.clone().upcast::<gtk::Widget>();
         let stack_page = if let Some(idx) = stack.iter().position(|p| p.child() == page) {
             stack.remove(idx)
-        } else if page.parent().is_none() {
-            self.gtk_stack.add_child(&page)
         } else {
-            self.gtk_stack.page(&page)
+            // page 可能来自 UI 模板，已经有 parent；gtk_stack.add_child 会自动
+            // 将其从旧 parent 移除并添加到 stack，避免 gtk_stack.page(&page)
+            // 返回 null 导致 assert 失败。
+            self.gtk_stack.add_child(&page)
         };
 
         stack.push(stack_page.clone());

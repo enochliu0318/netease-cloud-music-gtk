@@ -75,6 +75,29 @@ impl PlayListLyricsPage {
         scroll_win.add_controller(scroll_controller);
     }
 
+    // 根据当前系统主题与强调色设置歌词文字颜色。
+    // GtkTextTag 不支持 GTK CSS 变量，需在运行时解析主题命名颜色后手动设置。
+    // 注：style_context()/lookup_color 自 GTK 4.10 起标记 deprecated 但仍是
+    //     解析主题命名颜色的唯一公开途径，故显式允许。
+    #[allow(deprecated)]
+    fn apply_lyrics_colors(&self) {
+        let imp = self.imp();
+        let ctx = imp.lyrics_text_view.style_context();
+        // 已唱行：取主题文字色并降低不透明度，浅色/深色主题下均呈灰色弱化效果
+        if let Some(mut fg) = ctx.lookup_color("theme_fg_color") {
+            fg.set_alpha(0.45);
+            imp.uttered_text_tag
+                .set_property("foreground-rgba", &fg);
+        } else {
+            // 极端情况下回退为固定灰（与旧版一致）
+            imp.uttered_text_tag
+                .set_property("foreground", "#999999");
+        }
+        // 当前行：使用 dwm 系统主色 daisy gold（与系统配色一致，见 app.css @define-color ncm_gold）
+        imp.highlight_text_tag
+            .set_property("foreground", "#d9a441");
+    }
+
     pub fn update_playlist(&self, sis: &[SongInfo], _current_song: SongInfo, likes: &[bool]) {
         let imp = self.imp();
         imp.playlist.replace(Clone::clone(&sis).to_vec());
@@ -242,8 +265,16 @@ mod imp {
 
     impl ObjectImpl for PlayListLyricsPage {
         fn constructed(&self) {
-            let _obj = self.obj();
+            let obj = self.obj();
             self.parent_constructed();
+            obj.apply_lyrics_colors();
+            // 明暗主题切换时刷新歌词颜色
+            let obj_weak = obj.downgrade();
+            adw::StyleManager::default().connect_notify_local(Some("dark"), move |_, _| {
+                if let Some(obj) = obj_weak.upgrade() {
+                    obj.apply_lyrics_colors();
+                }
+            });
         }
 
         fn properties() -> &'static [ParamSpec] {

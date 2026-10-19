@@ -60,6 +60,8 @@ mod imp {
         #[template_child]
         pub switcher_title: TemplateChild<adw::ViewSwitcher>,
         #[template_child]
+        pub nav_sidebar: TemplateChild<gtk::ListBox>,
+        #[template_child]
         pub label_title: TemplateChild<Label>,
         #[template_child]
         pub user_button: TemplateChild<MenuButton>,
@@ -77,6 +79,7 @@ mod imp {
         pub my_page: TemplateChild<MyPage>,
 
         pub playlist_lyrics_page: OnceCell<PlayListLyricsPage>,
+        pub now_playing_page: OnceCell<NowPlayingPage>,
 
         pub user_menus: OnceCell<UserMenus>,
         pub popover_menu: OnceCell<PopoverMenu>,
@@ -91,6 +94,7 @@ mod imp {
         toast: RefCell<Option<Toast>>,
         user_info: RefCell<UserInfo>,
         pub current_song_id: Cell<u64>,
+        pub current_duration: Cell<u64>,
     }
 
     impl NeteaseCloudMusicGtk4Window {
@@ -112,11 +116,14 @@ mod imp {
     impl ObjectSubclass for NeteaseCloudMusicGtk4Window {
         const NAME: &'static str = "NeteaseCloudMusicGtk4Window";
         type Type = super::NeteaseCloudMusicGtk4Window;
-        type ParentType = ApplicationWindow;
+        type ParentType = adw::ApplicationWindow;
 
         fn class_init(klass: &mut Self::Class) {
             klass.bind_template();
             klass.bind_template_instance_callbacks();
+            // 确保 NowPlayingPage 类型已注册到 GType 系统，
+            // 以便 window.ui 中的 <object class="NowPlayingPage"> 能被实例化
+            let _ = NowPlayingPage::static_type();
         }
 
         fn instance_init(obj: &glib::subclass::InitializingObject<Self>) {
@@ -137,9 +144,19 @@ mod imp {
                 .set(PlayListLyricsPage::new())
                 .unwrap();
 
+            // 动态创建 NowPlayingPage（不再从 window.ui 模板获取，避免已有 parent 导致 gtk_stack.add_child 断言失败）
+            let now_playing_page = NowPlayingPage::new();
+            self.now_playing_page
+                .set(now_playing_page.clone())
+                .unwrap();
+
             if let Ok(mut stack_child) = self.stack_child.lock() {
                 stack_child.push_back(("discover".to_owned(), "".to_owned()));
             }
+
+            // 左侧导航栏初始选中「发现」（与 AdwViewStack 默认页一致）
+            self.nav_sidebar
+                .select_row(self.nav_sidebar.row_at_index(0).as_ref());
 
             self.toast.replace(Some(Toast::new("")));
 
@@ -212,11 +229,12 @@ mod imp {
     impl WidgetImpl for NeteaseCloudMusicGtk4Window {}
     impl WindowImpl for NeteaseCloudMusicGtk4Window {}
     impl ApplicationWindowImpl for NeteaseCloudMusicGtk4Window {}
+    impl adw::subclass::prelude::AdwApplicationWindowImpl for NeteaseCloudMusicGtk4Window {}
 }
 
 glib::wrapper! {
     pub struct NeteaseCloudMusicGtk4Window(ObjectSubclass<imp::NeteaseCloudMusicGtk4Window>)
-        @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow,
+        @extends gtk::Widget, gtk::Window, gtk::ApplicationWindow, adw::ApplicationWindow,
         @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;
 }
 
@@ -564,6 +582,22 @@ impl NeteaseCloudMusicGtk4Window {
         let id = song_info.id;
         let player_controls = self.imp().player_controls.get();
         player_controls.set_property("like", self.imp().user_like_song_contains(&id));
+
+        // 自动打开单独播放页（参照 AerMusic-Refactor）
+        // 只有在 now-playing 页面不在栈顶时才打开，避免 GTK Stack 重复添加同一个 widget 导致崩溃
+        let now_playing_page = self.imp().now_playing_page.get().unwrap();
+        now_playing_page.set_current_song(&song_info);
+        let stack = self.imp().page_stack.get().unwrap();
+        let already_top = stack.len() > 0
+            && stack.top_page().name().map_or(false, |n| n == "now-playing");
+        eprintln!(
+            "[DEBUG] play(): song={}, already_top={}, stack.len={}",
+            song_info.name, already_top, stack.len()
+        );
+        if !already_top {
+            self.page_new(now_playing_page.clone(), &song_info.name, "now-playing");
+        }
+
         player_controls.play(song_info);
         self.show_player_bar();
         self.imp().current_song_id.set(id);
@@ -603,6 +637,11 @@ impl NeteaseCloudMusicGtk4Window {
         let playlist_lyrics_page = imp.playlist_lyrics_page.get().unwrap();
         playlist_lyrics_page.set_sender(sender.clone());
 
+        // 初始化单独播放页
+        let now_playing_page = imp.now_playing_page.get().unwrap();
+        now_playing_page.set_sender(sender.clone());
+        now_playing_page.bind_current_song(self);
+
         let page_stack = imp.page_stack.get().unwrap();
         page_stack.set_transition_type(StackTransitionType::Crossfade);
         page_stack.set_transition_duration(100); // default 200
@@ -630,14 +669,33 @@ impl NeteaseCloudMusicGtk4Window {
     // page routing
     fn page_widget_switch(&self, need_back: bool) {
         let imp = self.imp();
-        let switcher_title = imp.switcher_title.get();
         let label_title = imp.label_title.get();
         let back_button = imp.back_button.get();
 
-        let visible = need_back;
-        back_button.set_visible(visible);
-        label_title.set_visible(visible);
-        switcher_title.set_visible(!visible);
+        // 顶部标签页已迁移至左侧导航栏：header 始终显示页面标题
+        imp.switcher_title.set_visible(false);
+        back_button.set_visible(need_back);
+        if !need_back {
+            // 返回主页面时恢复当前导航页标题（Windows 网易云风格）
+            label_title.set_label(&self.main_page_title());
+        }
+        label_title.set_visible(true);
+    }
+
+    // 主页面标题（用于 header 显示当前导航页名）
+    fn main_page_title(&self) -> String {
+        match self
+            .imp()
+            .stack
+            .visible_child_name()
+            .map(|n| n.to_string())
+            .unwrap_or_default()
+            .as_str()
+        {
+            "toplist" => gettext("Toplist"),
+            "my" => gettext("My"),
+            _ => gettext("Discover"),
+        }
     }
     pub fn page_set_info(&self, title: &str) {
         let imp = self.imp();
@@ -660,11 +718,20 @@ impl NeteaseCloudMusicGtk4Window {
         self.page_set_info(title);
         self.page_widget_switch(true);
     }
-    pub fn page_new(&self, page: &impl glib::object::IsA<Widget>, title: &str, name: &str) {
+    pub fn page_new(&self, page: impl glib::object::IsA<Widget>, title: &str, name: &str) {
+        eprintln!(
+            "[DEBUG] page_new(): title={}, name={}",
+            title, name
+        );
         let imp = self.imp();
         let stack = imp.page_stack.get().unwrap();
         if stack.len() > 1 {
             let top_page = stack.top_page();
+            eprintln!(
+                "[DEBUG] page_new(): top_page.title={:?}, top_page.name={:?}",
+                top_page.title(),
+                top_page.name()
+            );
             if top_page.title().unwrap() == title {
                 if let Some(n) = top_page.name() {
                     if n == name {
@@ -675,8 +742,14 @@ impl NeteaseCloudMusicGtk4Window {
                 }
             }
         }
+        // 如果是 now-playing 页面，隐藏底部播放栏
+        let is_now_playing = name == "now-playing";
+        if is_now_playing {
+            self.hide_player_bar();
+        }
         // stack.set_transition_type(StackTransitionType::SlideLeft);
-        let stack_page = stack.new_page(page);
+        let widget = page.upcast_ref::<gtk::Widget>();
+        let stack_page = stack.new_page(widget);
         stack_page.set_title(title);
         stack_page.set_name(name);
         self.page_set_info(title);
@@ -686,8 +759,19 @@ impl NeteaseCloudMusicGtk4Window {
         let imp = self.imp();
         let stack = imp.page_stack.get().unwrap();
 
+        // 检查当前栈顶是否是 now-playing 页面
+        let was_now_playing = stack
+            .top_page()
+            .name()
+            .map_or(false, |n| n == "now-playing");
+
         // stack.set_transition_type(StackTransitionType::UnderRight);
         stack.back_page();
+
+        // 如果离开的是 now-playing 页面，显示底部播放栏
+        if was_now_playing {
+            self.show_player_bar();
+        }
 
         if stack.len() > 1 {
             let top_page = stack.top_page();
@@ -789,10 +873,10 @@ impl NeteaseCloudMusicGtk4Window {
 
     pub fn init_playlist_lyrics_page(&self, sis: Vec<SongInfo>, si: SongInfo) {
         let imp = self.imp();
-        let page = imp.playlist_lyrics_page.get().unwrap();
+        let page = imp.playlist_lyrics_page.get().unwrap().clone();
         page.init_page(&sis, si, &self.get_song_likes(&sis));
 
-        self.page_new(page, &gettext("Play List&Lyrics"), "Play List&Lyrics");
+        self.page_new(page.clone(), &gettext("Play List&Lyrics"), "Play List&Lyrics");
         // 页面已挂载到窗口，订阅 current-song-changed 以同步 ▶️ 指示符。
         page.bind_current_song(self);
     }
@@ -801,7 +885,11 @@ impl NeteaseCloudMusicGtk4Window {
     pub fn update_lyrics(&self, lrc: Vec<(u64, String)>) {
         let imp = self.imp();
         let page = imp.playlist_lyrics_page.get().unwrap();
-        page.update_lyrics(lrc);
+        page.update_lyrics(lrc.clone());
+        // 更新单独播放页的歌词内容
+        if let Some(np_page) = imp.now_playing_page.get() {
+            np_page.update_lyrics(lrc);
+        }
     }
 
     // 强行更新歌词区文字，用于显示歌词加载提示
@@ -818,6 +906,10 @@ impl NeteaseCloudMusicGtk4Window {
         if self.page_cur_playlist_lyrics_page() {
             page.update_lyrics_highlight(time);
         }
+        // 更新单独播放页的歌词高亮
+        if let Some(np_page) = imp.now_playing_page.get() {
+            np_page.update_lyrics_highlight(time);
+        }
     }
 
     pub fn set_song_url(&self, si: SongInfo) {
@@ -825,12 +917,21 @@ impl NeteaseCloudMusicGtk4Window {
     }
     pub fn gst_duration_changed(&self, sec: u64) {
         self.imp().player_controls.get().gst_duration_changed(sec);
+        self.imp().current_duration.set(sec);
+        // 更新单独播放页的总时长
+        if let Some(page) = self.imp().now_playing_page.get() {
+            page.update_progress(0, sec);
+        }
     }
     pub fn gst_state_changed(&self, state: gstreamer_play::PlayState) {
         self.imp().player_controls.get().gst_state_changed(state);
         use gstreamer_play::PlayState;
         let is_playing = matches!(state, PlayState::Playing);
         self.update_tray_playing(is_playing);
+        // 更新单独播放页的播放/暂停按钮状态
+        if let Some(page) = self.imp().now_playing_page.get() {
+            page.update_play_pause_state(is_playing);
+        }
     }
     pub fn gst_volume_changed(&self, volume: f64) {
         self.imp().player_controls.get().gst_volume_changed(volume);
@@ -843,6 +944,11 @@ impl NeteaseCloudMusicGtk4Window {
     }
     pub fn scale_seek_update(&self, sec: u64) {
         self.imp().player_controls.get().scale_seek_update(sec);
+        // 更新单独播放页的播放进度
+        let duration = self.imp().current_duration.get();
+        if let Some(page) = self.imp().now_playing_page.get() {
+            page.update_progress(sec, duration);
+        }
     }
     pub fn scale_value_update(&self) {
         self.imp().player_controls.get().scale_value_update();
@@ -867,6 +973,14 @@ impl NeteaseCloudMusicGtk4Window {
         if !player_revealer.reveals_child() {
             player_revealer.set_visible(true);
             player_revealer.set_reveal_child(true);
+        }
+    }
+
+    pub fn hide_player_bar(&self) {
+        let player_revealer = self.imp().player_revealer.get();
+        if player_revealer.reveals_child() {
+            player_revealer.set_reveal_child(false);
+            player_revealer.set_visible(false);
         }
     }
 
@@ -1032,7 +1146,40 @@ impl NeteaseCloudMusicGtk4Window {
             } else if let Ok(mut sc) = imp.stack_child.lock() {
                 sc.push_back((visible_child_name.to_string(), label.text().to_string()));
             }
+
+            // 同步左侧导航栏选中项（Windows 风格导航）
+            let idx = match visible_child_name.as_str() {
+                "discover" => 0,
+                "toplist" => 1,
+                "my" => 2,
+                _ => -1,
+            };
+            if idx >= 0 {
+                imp.nav_sidebar
+                    .select_row(imp.nav_sidebar.row_at_index(idx).as_ref());
+            }
+            // 主页面时同步 header 标题为当前导航页名
+            if !imp.back_button.is_visible() {
+                self.page_set_info(&self.main_page_title());
+            }
         }
+    }
+
+    // 左侧导航栏点击：切换主页面；若处于详情页则先逐级返回（Windows 风格：侧栏导航始终可用）
+    #[template_callback]
+    fn nav_sidebar_cb(&self, row: gtk::ListBoxRow) {
+        let name = match row.index() {
+            0 => "discover",
+            1 => "toplist",
+            2 => "my",
+            _ => return,
+        };
+        if let Some(stack) = self.imp().page_stack.get() {
+            while stack.len() > 1 {
+                self.page_back();
+            }
+        }
+        self.imp().stack.set_visible_child_name(name);
     }
 
     #[template_callback]

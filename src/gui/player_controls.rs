@@ -15,7 +15,7 @@ use gstreamer_play::{prelude::ElementExt, *};
 use gtk::{CompositeTemplate, GestureClick, glib, prelude::*, subclass::prelude::*, *};
 use log::*;
 use mpris_server::PlaybackStatus;
-use ncm_api::{SongInfo, SongList};
+use ncm_api::SongInfo;
 use once_cell::sync::*;
 
 use crate::{
@@ -869,6 +869,50 @@ impl PlayerControls {
         }
     }
 
+    pub fn toggle_shuffle(&self) {
+        let current = self.property::<LoopsState>("loops");
+        let new_state = if current == LoopsState::Shuffle {
+            LoopsState::None
+        } else {
+            LoopsState::Shuffle
+        };
+        self.set_loops(new_state);
+    }
+
+    pub fn toggle_repeat(&self) {
+        let current = self.property::<LoopsState>("loops");
+        let new_state = match current {
+            LoopsState::None => LoopsState::Playlist,
+            LoopsState::Playlist => LoopsState::Track,
+            LoopsState::Track => LoopsState::None,
+            LoopsState::Shuffle => LoopsState::Shuffle, // Shuffle keeps shuffle
+        };
+        self.set_loops(new_state);
+    }
+
+    pub fn toggle_like(&self, song_id: u64) {
+        let current_like = self.property::<bool>("like");
+        let new_like = !current_like;
+        // 更新 like 按钮图标（通过 property 绑定自动处理）
+        self.set_property("like", new_like);
+        // 发送喜欢/取消喜欢动作
+        if let Some(imp) = self.imp().sender.get() {
+            let _ = imp.send_blocking(Action::LikeSong(song_id, new_like, None));
+        }
+    }
+
+    pub fn cycle_play_mode(&self) {
+        // 循环模式：无 -> 列表循环 -> 单曲循环 -> 无
+        let current = self.property::<LoopsState>("loops");
+        let new_state = match current {
+            LoopsState::None => LoopsState::Playlist,
+            LoopsState::Playlist => LoopsState::Track,
+            LoopsState::Track => LoopsState::None,
+            LoopsState::Shuffle => LoopsState::Shuffle, // Shuffle 单独处理
+        };
+        self.set_loops(new_state);
+    }
+
     pub fn set_volume(&self, value: f64) {
         let old: f64 = self.property("volume");
         if (old * 100.0).round() as i64 != (value * 100.0).round() as i64 {
@@ -976,20 +1020,9 @@ impl PlayerControls {
     fn cover_clicked_cb(&self) {
         let sender = self.imp().sender.get().unwrap().clone();
         if let Some(songinfo) = self.get_current_song() {
-            if songinfo.album_id != 0 {
-                let songlist = SongList {
-                    id: songinfo.album_id,
-                    name: songinfo.album,
-                    cover_img_url: songinfo.pic_url,
-                    author: String::new(),
-                    special_type: 0,
-                };
-                sender.send_blocking(Action::ToAlbumPage(songlist)).unwrap();
-            } else {
-                sender
-                    .send_blocking(Action::AddToast(gettext("Album not found!")))
-                    .unwrap();
-            }
+            // 点击播放栏封面：打开 Now Playing 页面并（重新）播放当前歌曲
+            // 使用非阻塞 send，避免与 Action::Play 内部的 send_blocking 死锁
+            let _ = sender.send(Action::Play(songinfo));
         }
     }
 
